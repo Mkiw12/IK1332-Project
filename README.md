@@ -1,4 +1,4 @@
 Repo for IoT project
-* To run backend: 
+* To run web api: 
   * npm install, 
   * npm run dev
