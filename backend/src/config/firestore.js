@@ -1,28 +1,12 @@
-//const admin = require('firebase-admin');
+const admin = require('firebase-admin');
+const path = require('path');
+const serviceAccount = require(path.join(__dirname, 'firebase-key.json'));
 
-// TODO: Initialize Firestore
-// Option 1: Use service account JSON file
-// const serviceAccount = require('./path/to/serviceAccountKey.json');
-// admin.initializeApp({
-//   credential: admin.credential.cert(serviceAccount)
-// });
+admin.initializeApp({
+  credential: admin.credential.cert(serviceAccount),
+  databaseURL: "https://ik1332proj-default-rtdb.europe-west1.firebasedatabase.app"
+});
 
-// Option 2: Use application default credentials (for deployed environments)
-// admin.initializeApp({
-//   credential: admin.credential.applicationDefault()
-// });
+const db = admin.firestore();
 
-// For now, return null until configured
-let db = null;
-
-try {
-  // Uncomment when ready to connect
-  // admin.initializeApp({
-  //   credential: admin.credential.applicationDefault()
-  // });
-  // db = admin.firestore();
-} catch (error) {
-  console.warn('Firestore not initialized. Using mock data.');
-}
-
-//module.exports = { db, admin };
+module.exports = db;
