@@ -1,5 +1,4 @@
-% Load your data
-data = readtable('data_real_ele.csv', 'VariableNamingRule', 'preserve');
+data = readtable('hemhiss.csv', 'VariableNamingRule', 'preserve');
 P = data.Pressure_Pa;
 
 % to explain to myself. We're looking at 20 samples at a time. If pressure
@@ -23,7 +22,7 @@ potential_thetas = sort(potential_thetas, 'descend');
 unique_thetas = potential_thetas(1);
 for i = 2:length(potential_thetas)
     % compare current potential floor to the last unique one we saved
-    if abs(potential_thetas(i) - unique_thetas(end)) > 15.0
+    if abs(potential_thetas(i) - unique_thetas(end)) > 10.0
         unique_thetas = [unique_thetas; potential_thetas(i)];
     end
 end
