@@ -18,6 +18,8 @@ class FirestoreElevatorRepository {
         }
       });
   }
+
+  
 }
 
 module.exports = new FirestoreElevatorRepository();
