@@ -21,6 +21,7 @@ bool isRecording = false;
 void setup() {
     Serial.begin(115200);
     delay(1000);
+    diodes(0);
 
     pinMode(SWA_IO, INPUT);
     pinMode(SWB_IO, INPUT);
@@ -28,8 +29,17 @@ void setup() {
 
     while(pressureSensor.beginI2C(BMP581_I2C_ADDRESS_DEFAULT) != BMP5_OK) {
 
-        Serial.println("Error: BMP581 not found!");
+        if(serialDebug){
+            Serial.println("Error: BMP581 not found!");
+        }
+        //error 1( everything but 0 in binary)
+        //we show errors for when not serial available. in this case 0b11111110 is error 1
+        diodes(0b11111110)
+        
         delay(2000);
+    }
+    else{
+        diodes(0);
     }
 }
 
@@ -51,9 +61,17 @@ void loop() {
             isRecording = false;
             dumpData();
         }
-
-        delay(50); // 20hz sampling
+        delay(100); // 10hz sampling
     }
+    derivative = ???
+    //calculate derivative
+
+    if(derivative > theta + 0 || derivative < -theta + 0){
+        //detected stop
+    }
+    else{}
+    //if moving code try and figure out how many floors diff is since last calculation? 
+
 }
 
 void dumpData() {
