@@ -2,15 +2,21 @@
 #include <SparkFun_BMP581_Arduino_Library.h>
 #include "dsplp_io.h"
 
+// --- DSPLP PIN DEFINITIONS ---
 #define SENSOR_SDA 2
 #define SENSOR_SCL 1
 
 BMP581 pressureSensor;
-int initialDataPoints = 30;
 
-// Dynamic memory pointers
-float** dataStorage = NULL; 
-int totalGroups = 0;
+struct LogEntry {
+    uint32_t time;
+    float pressure;
+    int floorMarker;
+};
+
+LogEntry* flightData = NULL;
+int totalSamples = 0;
+bool isRecording = false;
 
 void setup() {
     Serial.begin(115200);
@@ -25,54 +31,45 @@ void setup() {
         delay(2000);
     }
 
-    Serial.println("Ready. Press A to record a floor. Press B to dump CSV-ish.");
+    Serial.println("Ready. HOLD A to signify Floor 0 and start recording.");
+    
+    while(digitalRead(SWA_IO) == LOW);
+    isRecording = true;
 }
 
 void loop() {
-    if (digitalRead(SWA_IO) == HIGH) {
-        Serial.print("Recording Group ");
-        Serial.println(totalGroups);
-
+    if (isRecording) {
         //gemini helping me with dynamic array in C
-        // 1. Expand the "Rows" of our 2D array
-        dataStorage = (float**)realloc(dataStorage, (totalGroups + 1) * sizeof(float*));
-        // 2. Allocate the "Columns" (the 30 samples)
-        dataStorage[totalGroups] = (float*)malloc(initialDataPoints * sizeof(float));
+        flightData = (LogEntry*)realloc(flightData, (totalSamples + 1) * sizeof(LogEntry));
 
-        //collect data
-        for (int i = 0; i < initialDataPoints; i++) {
-            dataStorage[totalGroups][i] = getPa();
-            delay(500);
+        bmp5_sensor_data sensor;
+        if (pressureSensor.getSensorData(&sensor) == BMP5_OK) {
+            flightData[totalSamples].time = millis();
+            flightData[totalSamples].pressure = sensor.pressure;
+            // Marker is 1 if A is held, 0 if moving
+            flightData[totalSamples].floorMarker = (digitalRead(SWA_IO) == HIGH) ? 1 : 0;
+            totalSamples++;
         }
 
-        Serial.println("Floor recorded.");
-        totalGroups++;
-        
-        while(digitalRead(SWA_IO) == HIGH);
-    }
-    if (digitalRead(SWB_IO) == HIGH) {
-        Serial.println("\nGroup_ID, Sample_N, Pascal");
-        for (int g = 0; g < totalGroups; g++) {
-            for (int n = 0; n < initialDataPoints; n++) {
-                Serial.print(g);
-                Serial.print(", ");
-                Serial.print(n);
-                Serial.print(", ");
-                Serial.println(dataStorage[g][n]);
-            }
-            // Free memory as we go to keep the board clean
-            free(dataStorage[g]);
+        if (digitalRead(SWB_IO) == HIGH) {
+            isRecording = false;
+            dumpData();
         }
-        free(dataStorage);
-        Serial.println("--- FINISHED ---");
-        while(1);
+
+        delay(50); // 20hz sampling
     }
 }
 
-float getPa() {
-    bmp5_sensor_data data = {0,0};
-    if (pressureSensor.getSensorData(&data) == BMP5_OK) {
-        return data.pressure;
+void dumpData() {
+    Serial.println("\nTime_ms, Pressure_Pa, Floor_Marker");
+    for (int i = 0; i < totalSamples; i++) {
+        Serial.print(flightData[i].time);
+        Serial.print(", ");
+        Serial.print(flightData[i].pressure, 2);
+        Serial.print(", ");
+        Serial.println(flightData[i].floorMarker);
     }
-    return -1.0;
+    free(flightData);
+    Serial.println("--- FINISHED ---");
+    while(1);
 }
