@@ -11,8 +11,7 @@ int bufferIndex = 0;
 bool bufferFull = false;
 
 
-//standard deviation start. estimated from .m 
-const float JITTER_THRESHOLD = 2.5; 
+const float JITTER_THRESHOLD = 1.5; 
 
 void diodes(uint8_t leds) {
     for (int led = 0; led < 8; led++) {
@@ -35,9 +34,9 @@ void setup() {
     pinMode(LED_SHCP_IO, OUTPUT);
     pinMode(LED_STCP_IO, OUTPUT);
 
-    if (!pressureSensor.beginI2C()) {
-        Serial.println("Sensor error.");
-        while (1);
+    if (!pressureSensor.beginI2C(BMP581_I2C_ADDRESS_DEFAULT) != BMP5_OK) {
+        Serial.println("Error: BMP581 not found!");
+        delay(2000);
     }
     
     diodes(0); // Start dark
@@ -74,6 +73,10 @@ void loop() {
         } else {
             Serial.println("Calibrating buffer...");
         }
+    }
+    else {
+        // If the sensor is unplugged or broken, this will scream at you
+        Serial.printf("SENSOR ERROR: %d\n");
     }
     
     delay(100);
