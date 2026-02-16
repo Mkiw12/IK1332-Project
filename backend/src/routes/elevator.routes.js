@@ -3,8 +3,8 @@ const elevatorController = require('../controllers/elevator.controller');
 const router = express.Router();
 
 // READ-ONLY endpoints (IoT device writes directly to Firestore)
-router.get('/floor', elevatorController.getCurrentFloor);
-router.get('/pattern', elevatorController.getPattern);;
+router.get('/dashboard', elevatorController.getDashboard);
+//router.put('/alarms', elevatorController.setAlarms);
 
 
 module.exports = router;

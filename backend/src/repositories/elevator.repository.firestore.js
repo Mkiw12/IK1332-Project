@@ -14,7 +14,7 @@ class FirestoreElevatorRepository {
       .onSnapshot(snapshot => {
         if (!snapshot.empty) {
           const doc = snapshot.docs[0].data();
-          callback(doc); // doc {currentFloor, pattern}
+          callback(doc); // doc {currentFloor, pattern, alarms, timestamp}
         }
       });
   }

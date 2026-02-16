@@ -1,20 +1,27 @@
 async function updateDashboard() {
-  try {
-    const floorRes = await fetch('/elevator/floor');
-    const floorData = await floorRes.json();
+ try {
+    const res = await fetch('/elevator/dashboard');
+    const data = await res.json();
 
-    const patternRes = await fetch('/elevator/pattern');
-    const patternData = await patternRes.json();
+    document.getElementById('floor').textContent = data.currentFloor;
+    document.getElementById('pattern').textContent = data.pattern.join(' → ');
 
-    document.getElementById('floor').textContent = floorData.currentFloor;
-    document.getElementById('pattern').textContent = patternData.pattern.join(' → ');
-  } catch (err) {
-    console.error(err);
-    document.getElementById('floor').textContent = '?';
-    document.getElementById('pattern').textContent = '-';
-  }
-}
+    const container = document.getElementById('alarms');
+    container.innerHTML = '';
 
-// Poll every second
-setInterval(updateDashboard, 1000);
+    if (!data.alarm) {
+      container.textContent = 'None';
+    } else {
+      container.innerHTML = `
+        <strong>${data.alarm.type}</strong> - ${data.alarm.message}
+        <button onclick="ackAlarm('${data.alarm.id}')">Acknowledge</button>
+      `;
+    }
+      } catch (err) {
+        console.error(err);
+      }
+}      
+
+// Poll every 5 seconds
+setInterval(updateDashboard, 5000);
 updateDashboard();

@@ -1,23 +1,15 @@
 const elevatorService = require('../services/elevator.service');
 
 
-  function getCurrentFloor(req, res) {
+getDashboard = async (req, res) => {
   try {
-    const floor = elevatorService.getCurrentFloor();
-    res.json({ currentFloor: floor });
+    const dashboard = await elevatorService.getDashboard();
+    res.json(dashboard);
+    console.log('Dashboard data sent response:', dashboard);
   } catch (err) {
-    res.status(500).json({ error: err.message });
+    res.status(500).json({ error: 'Failed to fetch dashboard data' });
   }
-}
-
-function getPattern(req, res) {
-  try {
-    const pattern = elevatorService.getPattern();
-    res.json({ pattern });
-  } catch (err) {
-    res.status(500).json({ error: err.message });
-  }
-}
+};
 
 
-module.exports = { getCurrentFloor, getPattern };
+module.exports = { getDashboard };

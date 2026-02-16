@@ -14,15 +14,16 @@ class ElevatorService {
     this.latestState = state;
   }
 
-  getCurrentFloor() {
-    if (!this.latestState) throw new Error('No data yet');
-    return this.latestState.currentFloor;
+  async getDashboard() {
+    if (!this.latestState) {
+      return { currentFloor: null, pattern: [], alarms: null };
+    }
+    return {
+      currentFloor: this.latestState.currentFloor,
+      pattern: this.latestState.pattern || [],
+      alarms: this.latestState.alarms
+    };    
   }
-
-  getPattern() {
-    if (!this.latestState) throw new Error('No data yet');
-    return this.latestState.pattern;
-  }
-}
+}  
 
 module.exports = new ElevatorService();
