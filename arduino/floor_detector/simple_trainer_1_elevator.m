@@ -1,4 +1,4 @@
-data = readtable('hemhiss.csv', 'VariableNamingRule', 'preserve');
+data = readtable('data_real_ele.csv', 'VariableNamingRule', 'preserve');
 P = data.Pressure_Pa;
 
 % to explain to myself. We're looking at 20 samples at a time. If pressure
