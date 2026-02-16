@@ -1,6 +1,7 @@
 #include <Wire.h>
 #include <SparkFun_BMP581_Arduino_Library.h>
 #include "dsplp_io.h"
+#include "WiFi.h"
 
 // --- SETTINGS ---
 BMP581 pressureSensor;
@@ -39,15 +40,19 @@ void setup() {
     
     // Initial Calibration (Assume starting at Floor 0)
     //TODO: Replace with 2nd sensor? 
-    Serial.println("Calibrating Reference (Floor 0)...");
     bmp5_sensor_data data;
+
+    Serial.println("Stabilizing for 2 seconds...");
+    delay(2000); 
+
     float sum = 0;
-    for(int i = 0; i < 10; i++) {
+    int samples = 100; // More samples = better average
+    for(int i = 0; i < samples; i++) {
         pressureSensor.getSensorData(&data);
         sum += data.pressure;
-        delay(50);
+        delay(10);
     }
-    referencePressure = sum / 10.0;
+    referencePressure = sum / (float)samples;
     Serial.printf("Reference Pressure: %.2f\n", referencePressure);
 
     diodes(0); 
@@ -118,7 +123,7 @@ void handleStillState(float meanPressure) {
         diodes( ~(1 << detectedFloor) ); 
     } else {
         // could be the elevator is stuck between floors or the map is significantly off.
-        Serial.printf("STILL | Unknown | Delta: %.2f\n", currentDelta);
+        Serial.printf("STILL | Unknown | Delta: %.2f | meanPressure %.2f\n", currentDelta, meanPressure);
         diodes(0x00); 
     }
 }
