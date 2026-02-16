@@ -29,6 +29,22 @@ void setup() {
     Serial.begin(115200);
     Wire.begin(2, 1); // SDA, SCL
 
+
+//wifi settings
+// mac address edvin board
+// 30:ED:A0:DC:E3:D0
+    const ssid = AEJMbot_U1;
+    const password = AEJMbot1;
+    WiFi.mode(WIFI_STA);
+    WiFi.begin(ssid, password);
+
+    while (WiFi.status() != WL_CONNECTED) {
+        delay(500);
+        Serial.print(".");
+    }
+
+  Serial.println("\nConnected!");
+
     pinMode(LED_SDA_IO, OUTPUT);
     pinMode(LED_SHCP_IO, OUTPUT);
     pinMode(LED_STCP_IO, OUTPUT);
