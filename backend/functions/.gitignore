@@ -1,4 +1,4 @@
 node_modules/
 *.local
-backend/functions/config.js
+config.js
     
