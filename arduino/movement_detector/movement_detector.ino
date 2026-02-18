@@ -11,7 +11,7 @@
 // -------- SETTINGS ----------
 // ============================
 
-const bool DEBUG = true;
+const bool DEBUG = false;
 // WiFi
 const char *ssid = "Jacob";
 const char *password = "jacob12345";
@@ -73,7 +73,7 @@ bool mapLoaded = false;
 float FLOOR_OFFSETS[] = {0, -39.6733, -75.8909, -113.5566, -151.4735, -185.2196};
 const int NUM_FLOORS = sizeof(FLOOR_OFFSETS) / sizeof(FLOOR_OFFSETS[0]);
 const float FLOOR_THRESHOLD = 10.0;
-const float JITTER_THRESHOLD = 1.5;
+const float JITTER_THRESHOLD = 1.45;
 
 // Telemetry state
 unsigned long lastMsgTime = 0;
@@ -170,6 +170,8 @@ void loop()
   connectMQTT();
   client.loop();
 
+  delay(50);
+
   bmp5_sensor_data data;
   if (pressureSensor.getSensorData(&data) == BMP5_OK)
   {
@@ -210,13 +212,9 @@ void loop()
     {
       publishTelemetry();
       counter = 10;
-      mapCounter++;
 
-      if (mapCounter >= 10)
-      { // every 10 sends we also send map
+      // every 10 sends we also send map
         publishMap();
-        mapCounter = 0;
-      }
     }
     else
       counter--;
@@ -254,7 +252,7 @@ void handleStillState()
   }
 
   int detectedFloor = -1;
-  float learningRate = 0.02;
+  float learningRate = 0.05;
 
   for (int i = 0; i < NUM_FLOORS; i++)
   {
