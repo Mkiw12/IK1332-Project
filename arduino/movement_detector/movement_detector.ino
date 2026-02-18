@@ -1,3 +1,4 @@
+#include <ICM_20948.h>
 #include <Wire.h>
 #include <SparkFun_BMP581_Arduino_Library.h>
 #include "dsplp_io.h"
@@ -10,6 +11,7 @@
 // -------- SETTINGS ----------
 // ============================
 
+const bool DEBUG = true;
 // WiFi
 const char *ssid = "Jacob";
 const char *password = "jacob12345";
@@ -20,8 +22,10 @@ const char *mqtt_username = "test";
 const char *mqtt_password = "test";
 const int mqtt_port = 8883;
 
-const char* TOPIC_DATA = "ik1332/proj/sensors/hiss1/data";
-const char* TOPIC_MAP  = "ik1332/proj/sensors/hiss1/map";
+const char *TOPIC_DATA = "ik1332/proj/sensors/hiss1/data";
+const char *TOPIC_MAP = "ik1332/proj/sensors/hiss1/map";
+
+int mapCounter = 0;
 
 // CA certificate
 const char *ca_cert = R"EOF(
@@ -74,8 +78,9 @@ const float JITTER_THRESHOLD = 1.5;
 // Telemetry state
 unsigned long lastMsgTime = 0;
 const long interval = 1000;
+int counter = 0;
 
-const char* currentTrajectory = "unknown";
+const char *currentTrajectory = "unknown";
 int currentFloor = -1;
 float currentMean = 0;
 float currentStdev = 0;
@@ -101,9 +106,10 @@ void diodes(uint8_t leds);
 // -------- SETUP -------------
 // ============================
 
-void setup() {
+void setup()
+{
   Serial.begin(115200);
-  Wire.begin(2, 1);
+  Wire.begin(4, 1);
 
   espClient.setCACert(ca_cert);
 
@@ -116,25 +122,30 @@ void setup() {
   pinMode(LED_SHCP_IO, OUTPUT);
   pinMode(LED_STCP_IO, OUTPUT);
 
-  if (pressureSensor.beginI2C(i2cAddress) != BMP5_OK) {
+  if (pressureSensor.beginI2C(i2cAddress) != BMP5_OK)
+  {
     Serial.println("Sensor error.");
-    while (1);
+    while (1)
+      ;
   }
 
   // Wait for retained map
   unsigned long startWait = millis();
-  while (!mapLoaded && millis() - startWait < 3000) {
+  while (!mapLoaded && millis() - startWait < 3000)
+  {
     client.loop();
   }
 
   // If no retained map, calibrate
-  if (!mapLoaded) {
+  if (!mapLoaded)
+  {
     Serial.println("No retained map found. Calibrating...");
 
     bmp5_sensor_data data;
     float sum = 0;
 
-    for (int i = 0; i < 100; i++) {
+    for (int i = 0; i < 100; i++)
+    {
       pressureSensor.getSensorData(&data);
       sum += data.pressure;
       delay(10);
@@ -143,7 +154,8 @@ void setup() {
     referencePressure = sum / 100.0;
     publishMap();
   }
-  else {
+  else
+  {
     Serial.println("Using retained map.");
   }
 }
@@ -152,19 +164,23 @@ void setup() {
 // -------- LOOP --------------
 // ============================
 
-void loop() {
+void loop()
+{
   connectWifi();
   connectMQTT();
   client.loop();
 
   bmp5_sensor_data data;
-  if (pressureSensor.getSensorData(&data) == BMP5_OK) {
+  if (pressureSensor.getSensorData(&data) == BMP5_OK)
+  {
 
     historyBuffer[bufferIndex] = data.pressure;
     bufferIndex = (bufferIndex + 1) % WINDOW_SIZE;
-    if (bufferIndex == 0) bufferFull = true;
+    if (bufferIndex == 0)
+      bufferFull = true;
 
-    if (bufferFull) {
+    if (bufferFull)
+    {
 
       float sum = 0;
       for (int i = 0; i < WINDOW_SIZE; i++)
@@ -185,9 +201,25 @@ void loop() {
     }
   }
 
-  if (millis() - lastMsgTime > interval) {
+  if (millis() - lastMsgTime > interval)
+  {
+
     lastMsgTime = millis();
-    publishTelemetry();
+
+    if (counter <= 0)
+    {
+      publishTelemetry();
+      counter = 10;
+      mapCounter++;
+
+      if (mapCounter >= 10)
+      { // every 10 sends we also send map
+        publishMap();
+        mapCounter = 0;
+      }
+    }
+    else
+      counter--;
   }
 }
 
@@ -195,24 +227,43 @@ void loop() {
 // -------- STATES ------------
 // ============================
 
-void handleMovingState() {
+// movign state if elevator in transit. does not print
+void handleMovingState()
+{
+  counter = 0;
   currentTrajectory = "moving";
+  if (DEBUG)
+  {
+    Serial.print("MOVING | Stdev: ");
+    Serial.println(currentStdev);
+  }
   diodes(0xFF);
 }
 
-void handleStillState() {
+void handleStillState()
+{
 
   currentTrajectory = "still";
   float currentDelta = currentMean - referencePressure;
+  if (DEBUG)
+  {
+    Serial.print("STILL | Delta: ");
+    Serial.print(currentDelta);
+    Serial.print(" | Mean: ");
+    Serial.println(currentMean);
+  }
+
   int detectedFloor = -1;
   float learningRate = 0.02;
 
-  for (int i = 0; i < NUM_FLOORS; i++) {
-    if (abs(currentDelta - FLOOR_OFFSETS[i]) < FLOOR_THRESHOLD) {
+  for (int i = 0; i < NUM_FLOORS; i++)
+  {
+    if (abs(currentDelta - FLOOR_OFFSETS[i]) < FLOOR_THRESHOLD)
+    {
       detectedFloor = i;
       FLOOR_OFFSETS[i] =
-        FLOOR_OFFSETS[i] * (1 - learningRate) +
-        currentDelta * learningRate;
+          FLOOR_OFFSETS[i] * (1 - learningRate) +
+          currentDelta * learningRate;
       break;
     }
   }
@@ -220,18 +271,33 @@ void handleStillState() {
   currentFloor = detectedFloor;
 
   if (detectedFloor != -1)
+  {
+    if (DEBUG)
+    {
+      Serial.print("Detected floor: ");
+      Serial.println(detectedFloor);
+    }
     diodes(~(1 << detectedFloor));
+  }
   else
+  {
+    if (DEBUG)
+      Serial.println("Unknown floor");
     diodes(0x00);
+  }
 }
 
 // ============================
 // -------- MQTT --------------
 // ============================
+void publishTelemetry()
+{
 
-void publishTelemetry() {
-
-  if (!client.connected()) return;
+  if (!client.connected())
+  {
+    Serial.println("MQTT not connected, skipping telemetry.");
+    return;
+  }
 
   StaticJsonDocument<256> doc;
 
@@ -243,10 +309,22 @@ void publishTelemetry() {
   char buffer[256];
   serializeJson(doc, buffer);
 
-  client.publish(TOPIC_DATA, buffer, false);
+  if (DEBUG)
+  {
+    if (client.publish(TOPIC_DATA, buffer))
+    {
+      Serial.print("Published DATA: ");
+      Serial.println(buffer);
+    }
+    else
+    {
+      Serial.println("Failed to publish DATA");
+    }
+  }
 }
 
-void publishMap() {
+void publishMap()
+{
 
   StaticJsonDocument<512> doc;
 
@@ -261,18 +339,26 @@ void publishMap() {
 
   client.publish(TOPIC_MAP, buffer, true); // retained
 }
+void callback(char *topic, byte *payload, unsigned int length)
+{
 
-void callback(char *topic, byte *payload, unsigned int length) {
+  if (strcmp(topic, TOPIC_MAP) != 0)
+    return;
 
-  if (strcmp(topic, TOPIC_MAP) != 0) return;
+  if (mapLoaded)
+    return;
+
+  Serial.println("Restoring retained map from broker...");
 
   StaticJsonDocument<512> doc;
 
   DeserializationError err =
-    deserializeJson(doc, payload, length);
+      deserializeJson(doc, payload, length);
 
-  if (err) {
-    Serial.println("JSON parse failed.");
+  if (err)
+  {
+    Serial.print("JSON parse failed: ");
+    Serial.println(err.c_str());
     return;
   }
   referencePressure = doc["ref"];
@@ -280,31 +366,70 @@ void callback(char *topic, byte *payload, unsigned int length) {
   for (int i = 0; i < NUM_FLOORS && i < arr.size(); i++)
     FLOOR_OFFSETS[i] = arr[i];
 
+  bufferIndex = 0;
+  bufferFull = false;
+  currentFloor = -1;
+  currentMean = 0;
+  currentStdev = 0;
+
+  Serial.print("Zero reference set to: ");
+  Serial.println(referencePressure);
+
   mapLoaded = true;
-  Serial.println("Retained map restored.");
+
+  client.unsubscribe(TOPIC_MAP);
+  Serial.println("Unsubscribed from MAP topic.");
 }
 
-void connectWifi() {
-  if (WiFi.status() == WL_CONNECTED) return;
+void connectWifi()
+{
+
+  if (WiFi.status() == WL_CONNECTED)
+    return;
+
+  Serial.print("Connecting to WiFi");
 
   WiFi.begin(ssid, password);
+
   while (WiFi.status() != WL_CONNECTED)
+  {
     delay(500);
+    Serial.print(".");
+  }
+
+  Serial.println();
+  Serial.println("WiFi connected!");
+  Serial.print("IP address: ");
+  Serial.println(WiFi.localIP());
+  Serial.print("RSSI: ");
+  Serial.println(WiFi.RSSI());
 }
 
-void connectMQTT() {
-  if (client.connected()) return;
+void connectMQTT()
+{
 
-  while (!client.connected()) {
+  if (client.connected())
+    return;
+
+  Serial.println("Connecting to MQTT...");
+
+  while (!client.connected())
+  {
 
     String client_id = "esp32-" + WiFi.macAddress();
 
     if (client.connect(client_id.c_str(),
                        mqtt_username,
-                       mqtt_password)) {
+                       mqtt_password))
+    {
+      Serial.println("MQTT connected!");
+      Serial.println("Subscribing to MAP topic...");
       client.subscribe(TOPIC_MAP);
     }
-    else {
+    else
+    {
+      Serial.print("MQTT failed, state=");
+      Serial.println(client.state());
       delay(2000);
     }
   }
@@ -313,10 +438,12 @@ void connectMQTT() {
 // ============================
 // -------- LED DRIVER --------
 // ============================
+// their led drivers.
+void diodes(uint8_t leds)
+{
 
-void diodes(uint8_t leds) {
-
-  for (int led = 0; led < 8; led++) {
+  for (int led = 0; led < 8; led++)
+  {
     digitalWrite(LED_SDA_IO, (leds & (1 << led)) ? HIGH : LOW);
     digitalWrite(LED_SHCP_IO, HIGH);
     delayMicroseconds(1);
