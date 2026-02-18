@@ -13,8 +13,8 @@
 
 const bool DEBUG = false;
 // WiFi
-const char *ssid = "Jacob";
-const char *password = "jacob12345";
+const char *ssid = "Edvins Mobil";
+const char *password = "12345678";
 
 // MQTT
 const char *mqtt_broker = "jf9611d6.ala.eu-central-1.emqxsl.com";
@@ -60,6 +60,10 @@ MrY=
 BMP581 pressureSensor;
 uint8_t i2cAddress = BMP581_I2C_ADDRESS_DEFAULT;
 
+// ICM_20948 IMU (AD0_VAL=1 → address 0x69 when jumper open, AD0_VAL=0 → 0x68 when closed)
+ICM_20948_I2C imu;
+#define AD0_VAL 1
+
 // Moving window
 const int WINDOW_SIZE = 20;
 float historyBuffer[WINDOW_SIZE];
@@ -101,6 +105,7 @@ void callback(char *topic, byte *payload, unsigned int length);
 void handleMovingState();
 void handleStillState();
 void diodes(uint8_t leds);
+void checkMovementIMU();
 
 // ============================
 // -------- SETUP -------------
@@ -122,9 +127,54 @@ void setup()
   pinMode(LED_SHCP_IO, OUTPUT);
   pinMode(LED_STCP_IO, OUTPUT);
 
+  // Initialize ICM_20948 first so its internal Wire.begin() doesn't clobber BMP581
+  bool imuInit = false;
+  for (int attempt = 0; attempt < 5 && !imuInit; attempt++)
+  {
+    imu.begin(Wire, AD0_VAL);
+    if (imu.status == ICM_20948_Stat_Ok)
+    {
+      imuInit = true;
+    }
+    else
+    {
+      Serial.print("ICM_20948 init attempt ");
+      Serial.print(attempt + 1);
+      Serial.print(": ");
+      Serial.println(imu.statusString());
+      delay(500);
+    }
+  }
+
+  if (!imuInit)
+  {
+    Serial.println("ICM_20948 failed to initialize! Check wiring and I2C address.");
+  }
+  else
+  {
+    Serial.println("ICM_20948 initialized!");
+    delay(250);
+    imu.sleep(false);
+    imu.lowPower(false);
+    imu.setSampleMode((ICM_20948_Internal_Acc | ICM_20948_Internal_Gyr), ICM_20948_Sample_Mode_Continuous);
+
+    ICM_20948_fss_t myFSS;
+    myFSS.a = gpm2;   // ±2g
+    myFSS.g = dps250; // ±250 dps
+    imu.setFullScale((ICM_20948_Internal_Acc | ICM_20948_Internal_Gyr), myFSS);
+
+    ICM_20948_dlpcfg_t myDLPcfg;
+    myDLPcfg.a = acc_d23bw9_n34bw4;
+    myDLPcfg.g = gyr_d23bw9_n35bw9;
+    imu.setDLPFcfg((ICM_20948_Internal_Acc | ICM_20948_Internal_Gyr), myDLPcfg);
+    imu.enableDLPF(ICM_20948_Internal_Acc, true);
+    imu.enableDLPF(ICM_20948_Internal_Gyr, true);
+  }
+
+  // Initialize BMP581 pressure sensor after IMU to avoid Wire re-init conflicts
   if (pressureSensor.beginI2C(i2cAddress) != BMP5_OK)
   {
-    Serial.println("Sensor error.");
+    Serial.println("BMP581 sensor error.");
     while (1)
       ;
   }
@@ -202,6 +252,8 @@ void loop()
         handleStillState();
     }
   }
+    checkMovementIMU();
+
 
   if (millis() - lastMsgTime > interval)
   {
@@ -431,6 +483,25 @@ void connectMQTT()
       delay(2000);
     }
   }
+}
+
+// ============================
+// -------- IMU READ ----------
+// ============================
+void checkMovementIMU()
+{
+  if (imu.status != ICM_20948_Stat_Ok)
+    return;
+
+  if (!imu.dataReady())
+    return;
+
+  imu.getAGMT();
+
+  Serial.println("\n=== ICM_20948 ===");
+  Serial.print("Accel (mg)  X: "); Serial.print(imu.accX()); Serial.print("  Y: "); Serial.print(imu.accY()); Serial.print("  Z: "); Serial.println(imu.accZ());
+  Serial.print("Gyro (dps)  X: "); Serial.print(imu.gyrX()); Serial.print("  Y: "); Serial.print(imu.gyrY()); Serial.print("  Z: "); Serial.println(imu.gyrZ());
+  Serial.println("================\n");
 }
 
 // ============================
