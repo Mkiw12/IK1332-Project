@@ -40,16 +40,19 @@ setGlobalOptions({ maxInstances: 1 });
 //   response.send("Hello from Firebase!");
 // });
 
-exports.onIsActiveChange = onDocumentUpdated(
-  "elevator-states/{betweenFloors}",
+exports.onFloorStuck = onDocumentUpdated(
+  "sensor_readings/{docId}", // docId is the timestamp document name
   async (event) => {
     const before = event.data.before.data();
     const after = event.data.after.data();
 
     if (!before || !after) return;
 
-    // Only trigger when boolean changes
-    if (before.betweenFloors === false && after.betweenFloors === true) {
+    const prevFloor = before.floor;
+    const newFloor = after.floor;
+
+    // Only trigger when floor changes to -1
+    if (prevFloor !== -1 && newFloor === -1) {
       logger.info("betweenFloors changed to true. Sending email...");
 
       // Send email here
