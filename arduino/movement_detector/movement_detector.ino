@@ -106,6 +106,7 @@ void handleMovingState();
 void handleStillState();
 void diodes(uint8_t leds);
 void checkMovementIMU();
+uint8_t connectionStatus();
 
 // ============================
 // -------- SETUP -------------
@@ -327,13 +328,14 @@ void handleStillState()
       Serial.print("Detected floor: ");
       Serial.println(detectedFloor);
     }
-    diodes(~(1 << detectedFloor));
+    // bits 0-1 = WiFi/MQTT status, bits 2-7 = floor indicator
+    diodes((~(1 << (detectedFloor + 2)) & 0xFC) | connectionStatus());
   }
   else
   {
     if (DEBUG)
       Serial.println("Unknown floor");
-    diodes(0x00);
+    diodes(connectionStatus());
   }
 }
 
@@ -359,8 +361,7 @@ void publishTelemetry()
   char buffer[256];
   serializeJson(doc, buffer);
 
-  if (DEBUG)
-  {
+  
     if (client.publish(TOPIC_DATA, buffer))
     {
       Serial.print("Published DATA: ");
@@ -370,7 +371,7 @@ void publishTelemetry()
     {
       Serial.println("Failed to publish DATA");
     }
-  }
+  
 }
 
 void publishMap()
@@ -502,6 +503,18 @@ void checkMovementIMU()
   Serial.print("Accel (mg)  X: "); Serial.print(imu.accX()); Serial.print("  Y: "); Serial.print(imu.accY()); Serial.print("  Z: "); Serial.println(imu.accZ());
   Serial.print("Gyro (dps)  X: "); Serial.print(imu.gyrX()); Serial.print("  Y: "); Serial.print(imu.gyrY()); Serial.print("  Z: "); Serial.println(imu.gyrZ());
   Serial.println("================\n");
+}
+
+// ============================
+// -------- STATUS LEDS -------
+// ============================
+// LED 0 = WiFi connected, LED 1 = MQTT connected
+uint8_t connectionStatus()
+{
+  uint8_t s = 0;
+  if (WiFi.status() == WL_CONNECTED) s |= 0x01;
+  if (client.connected())            s |= 0x02;
+  return s;
 }
 
 // ============================
