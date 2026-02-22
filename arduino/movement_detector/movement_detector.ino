@@ -13,8 +13,8 @@
 
 const bool DEBUG = false;
 // WiFi
-const char *ssid = "Jacob";
-const char *password = "jacob12345";
+const char *ssid = "Edvins Mobil";
+const char *password = "12345678";
 
 // MQTT
 const char *mqtt_broker = "jf9611d6.ala.eu-central-1.emqxsl.com";
@@ -101,6 +101,7 @@ void callback(char *topic, byte *payload, unsigned int length);
 void handleMovingState();
 void handleStillState();
 void diodes(uint8_t leds);
+uint8_t connectionStatus();
 
 // ============================
 // -------- SETUP -------------
@@ -275,13 +276,14 @@ void handleStillState()
       Serial.print("Detected floor: ");
       Serial.println(detectedFloor);
     }
-    diodes(~(1 << detectedFloor));
+    // bits 0-1 = WiFi/MQTT status, bits 2-7 = floor indicator
+    diodes((~(1 << (detectedFloor + 2)) & 0xFC) | connectionStatus());
   }
   else
   {
     if (DEBUG)
       Serial.println("Unknown floor");
-    diodes(0x00);
+    diodes(connectionStatus());
   }
 }
 
@@ -307,8 +309,7 @@ void publishTelemetry()
   char buffer[256];
   serializeJson(doc, buffer);
 
-  if (DEBUG)
-  {
+  
     if (client.publish(TOPIC_DATA, buffer))
     {
       Serial.print("Published DATA: ");
@@ -318,7 +319,7 @@ void publishTelemetry()
     {
       Serial.println("Failed to publish DATA");
     }
-  }
+  
 }
 
 void publishMap()
@@ -431,6 +432,18 @@ void connectMQTT()
       delay(2000);
     }
   }
+}
+
+// ============================
+// -------- STATUS LEDS -------
+// ============================
+// LED 0 = WiFi connected, LED 1 = MQTT connected
+uint8_t connectionStatus()
+{
+  uint8_t s = 0;
+  if (WiFi.status() == WL_CONNECTED) s |= 0x01;
+  if (client.connected())            s |= 0x02;
+  return s;
 }
 
 // ============================
