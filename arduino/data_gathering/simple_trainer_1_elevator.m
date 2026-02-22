@@ -1,7 +1,7 @@
-data = readtable('data_real_ele.csv', 'VariableNamingRule', 'preserve');
+data = readtable('hemhiss.csv', 'VariableNamingRule', 'preserve');
 P = data.Pressure_Pa;
 
-% to explain to myself. We're looking at 20 samples at a time. If pressure
+% to explain to myself. We're looking at 15 samples at a time. If pressure
 % is moving too much, assume not floor. (dev). if pressure is flat, we mark
 % it as a potential flloor. 
 window_size = 20; 

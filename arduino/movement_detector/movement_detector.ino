@@ -71,9 +71,11 @@ bool mapLoaded = false;
 
 // Floor map
 float FLOOR_OFFSETS[] = {0, -39.6733, -75.8909, -113.5566, -151.4735, -185.2196};
+//float FLOOR_OFFSETS[] = {0,  -10.9184,  -43.2423,  -75.7490}; // edvin elevator
 const int NUM_FLOORS = sizeof(FLOOR_OFFSETS) / sizeof(FLOOR_OFFSETS[0]);
 const float FLOOR_THRESHOLD = 10.0;
-const float JITTER_THRESHOLD = 1.45;
+const float JITTER_THRESHOLD = 2.0182; //based on the matlab file (simple_trainer_1_elevator.m)
+// const float JITTER_THRESHOLD = 1.4656; //edvin elevator .m file
 
 // Telemetry state
 unsigned long lastMsgTime = 0;
