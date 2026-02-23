@@ -1,4 +1,4 @@
-data = readtable('hemhiss.csv', 'VariableNamingRule', 'preserve');
+data = readtable('with_imu_hemhiss.csv', 'VariableNamingRule', 'preserve');
 P = data.Pressure_Pa;
 
 % to explain to myself. We still look at variance to find still windows,
@@ -9,8 +9,17 @@ dup_tol = 10;
 
 % new columns from data_gathering.ino (required)
 dP = data.Pressure_dPaPerSec;
-accel_dev = abs(data.AccelMag_mg - 1000);
-imu_flag = data.IMU_Moving > 0;
+ax = data.AccelX_mg;
+ay = data.AccelY_mg;
+az = data.AccelZ_mg;
+gx = data.GyroX_dps;
+gy = data.GyroY_dps;
+gz = data.GyroZ_dps;
+
+% compute accel magnitude deviation from 1g + gyro magnitude
+accel_mag = sqrt(ax.^2 + ay.^2 + az.^2);
+accel_dev = abs(accel_mag - 1000);
+gyro_mag = sqrt(gx.^2 + gy.^2 + gz.^2);
 
 % Learn jitter threshold without labels:
 % choose t that best separates low-variance (still) and high-variance (moving)
@@ -54,14 +63,15 @@ fprintf('DERIVATIVE_THRESHOLD = %.4f Pa/s\n', derivative_threshold);
 fprintf('ACCEL_DEVIATION_THRESHOLD = %.2f mg\n', accel_threshold);
 fprintf('Still ratio below std threshold = %.3f\n', still_ratio);
 
-% still candidate if pressure window is flat AND derivative small.
-is_still_std = p_std < jitter_threshold;
-is_still_dp = abs(dP) < derivative_threshold;
-is_still_acc = accel_dev < accel_threshold;
+% compute movement from pressure derivative + acceleration
+% //<-- combined movement indicator from pressure and IMU
+is_moving_pressure = abs(dP) > derivative_threshold;
+is_moving_accel = accel_dev > accel_threshold;
+is_moving_combined = is_moving_pressure | is_moving_accel;
 
-% if IMU says moving, force it to moving.
-% //<-- this is for noisy pressure where imu catches movement better
-is_green = is_still_std & is_still_dp & is_still_acc & ~imu_flag;
+% still candidate if pressure window is flat AND not moving by derivative/accel
+is_still_std = p_std < jitter_threshold;
+is_green = is_still_std & ~is_moving_combined;
 
 % K-style clustering. looking for <x_floors>*2 <-- random number i chose
 % idk tbh
@@ -93,15 +103,16 @@ offsets = unique_thetas - theta_f1;
 figure;
 plot(P, 'Color', [0.8 0.8 0.8]); hold on;
 
-% make green where good data
-plot(find(is_green), P(is_green), 'g.', 'MarkerSize', 5);
+% color by movement: blue=still, red=moving (from dP + accel combo)
+plot(find(~is_moving_combined), P(~is_moving_combined), 'b.', 'MarkerSize', 5);
+plot(find(is_moving_combined), P(is_moving_combined), 'r.', 'MarkerSize', 5);
 yline(unique_thetas, 'r-', 'Learned Floors', 'LineWidth', 2);
-title(['Detected ', num2str(length(unique_thetas)), ' Unique Floors']);
+title(['Detected ', num2str(length(unique_thetas)), ' Unique Floors | Blue=Still, Red=Moving (dP+accel)']);
 grid on;
 
 % quick verify movement against derivative + imu
 figure;
-tiledlayout(3,1);
+tiledlayout(4,1);
 
 nexttile;
 plot(p_std, 'b'); hold on;
@@ -120,6 +131,11 @@ nexttile;
 plot(accel_dev, 'k'); hold on;
 yline(accel_threshold, 'r--', 'acc threshold');
 title('|AccelMag - 1000| (mg)');
+grid on;
+
+nexttile;
+plot(gyro_mag, 'r'); hold on;
+title('Gyro magnitude (dps) - rotation rate');
 grid on;
 
 fprintf('--- UPDATED OFFSETS ---\n');
