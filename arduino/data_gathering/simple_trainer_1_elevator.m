@@ -6,6 +6,7 @@ P = data.Pressure_Pa;
 % it as a potential flloor. 
 window_size = 20; 
 p_std = movstd(P, window_size);
+dup_tol = 10;
 
 % Learn jitter threshold without labels:
 % choose t that best separates low-variance (still) and high-variance (moving)
@@ -57,7 +58,7 @@ potential_thetas = sort(potential_thetas, 'descend');
 unique_thetas = potential_thetas(1);
 for i = 2:length(potential_thetas)
     % compare current potential floor to the last unique one we saved
-    if abs(potential_thetas(i) - unique_thetas(end)) > 10.0
+    if abs(potential_thetas(i) - unique_thetas(end)) > dup_tol
         unique_thetas = [unique_thetas; potential_thetas(i)];
     end
 end
