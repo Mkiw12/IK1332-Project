@@ -10,7 +10,8 @@
 #define AD0_VAL 1
 
 const uint16_t SAMPLE_DELAY_MS = 100; // 10 Hz
-const float MOTION_ACCEL_THRESHOLD_MG = 80.0f;
+const float MOTION_ACCEL_THRESHOLD_MG = 30.0f; // for movement indicator
+const float MOTION_GYRO_THRESHOLD_DPS = 5.0f;  // rotation rate threshold
 
 BMP581 pressureSensor;
 ICM_20948_I2C myICM;
@@ -19,8 +20,13 @@ struct LogEntry {
     uint32_t timeMs;
     float pressurePa;
     float pressureDerivativePaPerSec;
-    float accelMagMg;
-    int imuMoving;
+    float accelX_mg;
+    float accelY_mg;
+    float accelZ_mg;
+    float gyroX_dps;
+    float gyroY_dps;
+    float gyroZ_dps;
+    int imuMoving; // <-- composite flag from accel+gyro
 };
 bool serialDebug = false;
 LogEntry* flightData = NULL;
@@ -41,6 +47,8 @@ void setup() {
 
     pinMode(SWA_IO, INPUT);
     pinMode(SWB_IO, INPUT);
+    Serial.println("Debug test!");
+
     WIRE_PORT.begin(SENSOR_SDA, SENSOR_SCL);
     WIRE_PORT.setClock(400000);
 
@@ -119,25 +127,37 @@ void loop() {
             derivative = (sensor.pressure - lastPressure) / dt;
         }
 
-        float accelMagMg = 1000.0f;
+        float ax = 0.0f, ay = 0.0f, az = 1000.0f; // default to 1g on Z if no IMU
+        float gx = 0.0f, gy = 0.0f, gz = 0.0f;
         int imuMoving = 0;
 
         if (myICM.dataReady()) {
             myICM.getAGMT();
 
-            float ax = myICM.accX();
-            float ay = myICM.accY();
-            float az = myICM.accZ();
-            accelMagMg = sqrtf(ax * ax + ay * ay + az * az);
+            ax = myICM.accX();
+            ay = myICM.accY();
+            az = myICM.accZ();
+            gx = myICM.gyrX();
+            gy = myICM.gyrY();
+            gz = myICM.gyrZ();
 
-            // if total accel differs from 1g baseline, likely moving.
-            imuMoving = (fabsf(accelMagMg - 1000.0f) > MOTION_ACCEL_THRESHOLD_MG) ? 1 : 0;
+            // movement indicator: accel deviation from 1g OR significant rotation
+            float accelMag = sqrtf(ax*ax + ay*ay + az*az);
+            float gyroMag = sqrtf(gx*gx + gy*gy + gz*gz);
+            bool accelMoving = fabsf(accelMag - 1000.0f) > MOTION_ACCEL_THRESHOLD_MG;
+            bool gyroMoving = gyroMag > MOTION_GYRO_THRESHOLD_DPS;
+            imuMoving = (accelMoving || gyroMoving) ? 1 : 0;
         }
 
         flightData[totalSamples].timeMs = nowMs;
         flightData[totalSamples].pressurePa = sensor.pressure;
         flightData[totalSamples].pressureDerivativePaPerSec = derivative;
-        flightData[totalSamples].accelMagMg = accelMagMg;
+        flightData[totalSamples].accelX_mg = ax;
+        flightData[totalSamples].accelY_mg = ay;
+        flightData[totalSamples].accelZ_mg = az;
+        flightData[totalSamples].gyroX_dps = gx;
+        flightData[totalSamples].gyroY_dps = gy;
+        flightData[totalSamples].gyroZ_dps = gz;
         flightData[totalSamples].imuMoving = imuMoving;
         totalSamples++;
 
@@ -155,7 +175,7 @@ void loop() {
 }
 
 void dumpData() {
-    Serial.println("\nTime_ms,Pressure_Pa,Pressure_dPaPerSec,AccelMag_mg,IMU_Moving");
+    Serial.println("\nTime_ms,Pressure_Pa,Pressure_dPaPerSec,AccelX_mg,AccelY_mg,AccelZ_mg,GyroX_dps,GyroY_dps,GyroZ_dps,IMU_Moving");
     for (int i = 0; i < totalSamples; i++) {
         Serial.print(flightData[i].timeMs);
         Serial.print(",");
@@ -163,7 +183,17 @@ void dumpData() {
         Serial.print(",");
         Serial.print(flightData[i].pressureDerivativePaPerSec, 3);
         Serial.print(",");
-        Serial.print(flightData[i].accelMagMg, 2);
+        Serial.print(flightData[i].accelX_mg, 2);
+        Serial.print(",");
+        Serial.print(flightData[i].accelY_mg, 2);
+        Serial.print(",");
+        Serial.print(flightData[i].accelZ_mg, 2);
+        Serial.print(",");
+        Serial.print(flightData[i].gyroX_dps, 2);
+        Serial.print(",");
+        Serial.print(flightData[i].gyroY_dps, 2);
+        Serial.print(",");
+        Serial.print(flightData[i].gyroZ_dps, 2);
         Serial.print(",");
         Serial.println(flightData[i].imuMoving);
     }
