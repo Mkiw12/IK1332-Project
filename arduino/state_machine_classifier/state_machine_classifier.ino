@@ -214,9 +214,16 @@ void setup()
   {
     Serial.println("No retained map found. Calibrating...");
 
+    // Warm up BMP581: discard first 2 seconds of readings so sensor stabilizes
     bmp5_sensor_data data;
-    float sum = 0;
+    Serial.println("Warming up pressure sensor...");
+    for (int i = 0; i < 40; i++)
+    {
+      pressureSensor.getSensorData(&data);
+      delay(50);
+    }
 
+    float sum = 0;
     for (int i = 0; i < 100; i++)
     {
       pressureSensor.getSensorData(&data);
@@ -316,7 +323,9 @@ void loop()
 
     if (counter <= 0)
     {
-      publishTelemetry();
+      if (bufferFull) {
+        publishTelemetry();
+      }
       counter = 10;
 
       // every 10 sends we also send map
@@ -441,7 +450,7 @@ void publishMap()
   char buffer[512];
   serializeJson(doc, buffer);
 
-  client.publish(TOPIC_MAP, buffer, true); // retained
+  client.publish(TOPIC_MAP, buffer, !forceLocalCalibrate); // only retain when not forcing local
 }
 void callback(char *topic, byte *payload, unsigned int length)
 {
@@ -530,8 +539,11 @@ void connectMQTT()
                        mqtt_password))
     {
       Serial.println("MQTT connected!");
-      Serial.println("Subscribing to MAP topic...");
-      client.subscribe(TOPIC_MAP);
+      if (!forceLocalCalibrate)
+      {
+        Serial.println("Subscribing to MAP topic...");
+        client.subscribe(TOPIC_MAP);
+      }
     }
     else
     {
