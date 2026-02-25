@@ -7,55 +7,21 @@ window_size = 20;
 p_std = movstd(P, window_size);
 dup_tol = 10;
 
-% new columns from data_gathering.ino (required)
+p_std = movstd(P, window_size);
 dP = data.Pressure_dPaPerSec;
+
 ax = data.AccelX_mg;
 ay = data.AccelY_mg;
 az = data.AccelZ_mg;
-gx = data.GyroX_dps;
-gy = data.GyroY_dps;
-gz = data.GyroZ_dps;
-
-% compute accel magnitude deviation from 1g + gyro magnitude
 accel_mag = sqrt(ax.^2 + ay.^2 + az.^2);
 accel_dev = abs(accel_mag - 1000);
-gyro_mag = sqrt(gx.^2 + gy.^2 + gz.^2);
 
-% Learn jitter threshold without labels:
-% choose t that best separates low-variance (still) and high-variance (moving)
-valid_std = p_std(isfinite(p_std));
-candidate_thresholds = linspace(prctile(valid_std, 5), prctile(valid_std, 95), 300);
-best_score = -inf;
-jitter_threshold = median(valid_std);
-
-for t = candidate_thresholds
-    low_group = valid_std(valid_std <= t);
-    high_group = valid_std(valid_std > t);
-
-    if isempty(low_group) || isempty(high_group)
-        continue;
-    end
-
-    w0 = numel(low_group) / numel(valid_std);
-    w1 = numel(high_group) / numel(valid_std);
-    mu0 = mean(low_group);
-    mu1 = mean(high_group);
-
-    between_class_variance = w0 * w1 * (mu0 - mu1)^2;
-
-    if between_class_variance > best_score
-        best_score = between_class_variance;
-        jitter_threshold = t;
-    end
-end
-
-still_ratio = mean(valid_std < jitter_threshold);
-
-% derivative threshold from data itself
-valid_dp = abs(dP(isfinite(dP)));
-derivative_threshold = prctile(valid_dp, 70);
-
+% thresholds (simple percentile approach)
+jitter_threshold = prctile(p_std(isfinite(p_std)), 70);
+derivative_threshold = prctile(abs(dP(isfinite(dP))), 70);
 accel_threshold = prctile(accel_dev(isfinite(accel_dev)), 70);
+
+still_ratio = mean(p_std(isfinite(p_std)) < jitter_threshold);
 
 fprintf('--- LEARNED THRESHOLDS (UNSUPERVISED) ---\n');
 fprintf('JITTER_THRESHOLD = %.4f Pa\n', jitter_threshold);
@@ -63,24 +29,16 @@ fprintf('DERIVATIVE_THRESHOLD = %.4f Pa/s\n', derivative_threshold);
 fprintf('ACCEL_DEVIATION_THRESHOLD = %.2f mg\n', accel_threshold);
 fprintf('Still ratio below std threshold = %.3f\n', still_ratio);
 
-% compute movement from pressure derivative + acceleration
-% //<-- combined movement indicator from pressure and IMU
-is_moving_pressure = abs(dP) > derivative_threshold;
-is_moving_accel = accel_dev > accel_threshold;
-is_moving_combined = is_moving_pressure | is_moving_accel;
+% I cant be bothered doing gyro simplyfiing
+moving_by_std = p_std > jitter_threshold;
+moving_by_dp_and_acc = (abs(dP) > derivative_threshold) & (accel_dev > accel_threshold);
+is_moving = moving_by_std | moving_by_dp_and_acc;
 
-% still candidate if pressure window is flat AND not moving by derivative/accel
-is_still_std = p_std < jitter_threshold;
-is_green = is_still_std & ~is_moving_combined;
-
-% K-style clustering. looking for <x_floors>*2 <-- random number i chose
-% idk tbh
-% amount of floors. k clustering
-% should have some spare incase balls don't land properly
-x_floors = 7;
+% still samples for floor clustering
+is_green = ~is_moving;
 
 if nnz(is_green) < 2 * x_floors
-    error('Not enough still samples after filtering. Try lower thresholds or collect longer run.');
+    error('Not enough still samples after filtering. Try a longer run.');
 end
 
 [~, potential_thetas] = kmeans(P(is_green), 2 * x_floors, 'Replicates', 5);
@@ -99,20 +57,18 @@ end
 theta_f1 = unique_thetas(1);
 offsets = unique_thetas - theta_f1;
 
-% vis
+% plot 1: pressure + moving/still coloring
 figure;
 plot(P, 'Color', [0.8 0.8 0.8]); hold on;
-
-% color by movement: blue=still, red=moving (from dP + accel combo)
-plot(find(~is_moving_combined), P(~is_moving_combined), 'b.', 'MarkerSize', 5);
-plot(find(is_moving_combined), P(is_moving_combined), 'r.', 'MarkerSize', 5);
+plot(find(~is_moving), P(~is_moving), 'b.', 'MarkerSize', 5);
+plot(find(is_moving), P(is_moving), 'r.', 'MarkerSize', 5);
 yline(unique_thetas, 'r-', 'Learned Floors', 'LineWidth', 2);
-title(['Detected ', num2str(length(unique_thetas)), ' Unique Floors | Blue=Still, Red=Moving (dP+accel)']);
+title(['Detected ', num2str(length(unique_thetas)), ' Floors | Blue=Still Red=Moving']);
 grid on;
 
-% quick verify movement against derivative + imu
+% plot 2: threshold sanity checks
 figure;
-tiledlayout(4,1);
+tiledlayout(3,1);
 
 nexttile;
 plot(p_std, 'b'); hold on;
@@ -131,11 +87,6 @@ nexttile;
 plot(accel_dev, 'k'); hold on;
 yline(accel_threshold, 'r--', 'acc threshold');
 title('|AccelMag - 1000| (mg)');
-grid on;
-
-nexttile;
-plot(gyro_mag, 'r'); hold on;
-title('Gyro magnitude (dps) - rotation rate');
 grid on;
 
 fprintf('--- UPDATED OFFSETS ---\n');

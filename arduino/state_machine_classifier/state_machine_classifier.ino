@@ -75,11 +75,11 @@ bool mapLoaded = false;
 
 // Floor map
 float FLOOR_OFFSETS[] = {0, -39.6733, -75.8909, -113.5566, -151.4735, -185.2196};
-//float FLOOR_OFFSETS[] = {0,  -10.9184,  -43.2423,  -75.7490}; // edvin elevator
+//float FLOOR_OFFSETS[] = {0,  -10.4018,  -46.6155,  -78.6359,  -96.3046, -144.7175}; // edvin elevator skipping floor 5 to have -1
 const int NUM_FLOORS = sizeof(FLOOR_OFFSETS) / sizeof(FLOOR_OFFSETS[0]);
 const float FLOOR_THRESHOLD = 10.0;
-const float JITTER_THRESHOLD = 2.0182; //based on the matlab file (simple_trainer_1_elevator.m)
-// const float JITTER_THRESHOLD = 1.4656; //edvin elevator .m file
+//const float JITTER_THRESHOLD = 2.0182; //based on the matlab file (simple_trainer_1_elevator.m)
+const float JITTER_THRESHOLD = 3.6666f; //edvin elevator .m file after advanced trainer
 
 // Telemetry state
 unsigned long lastMsgTime = 0;
@@ -90,6 +90,21 @@ const char *currentTrajectory = "unknown";
 int currentFloor = -1;
 float currentMean = 0;
 float currentStdev = 0;
+
+float currentDp = 0.0f;
+float currentAccelDev = 0.0f;
+float prevPressure = 0.0f;
+unsigned long prevPressureMs = 0;
+bool hasPrevPressure = false;
+
+//Acceleration data. 
+//Edvin
+const float DERIVATIVE_THRESHOLD = 11.3360f; //pa/s 
+const float ACCEL_DEVIATION_THRESHOLD = 14.55f; //mg
+/*
+Real Elevator
+<missing>
+*/
 
 // Networking
 WiFiClientSecure espClient;
@@ -174,7 +189,7 @@ void setup()
     imu.enableDLPF(ICM_20948_Internal_Gyr, true);
   }
 
-  // Initialize BMP581 pressure sensor after IMU to avoid Wire re-init conflicts
+  // Initialize BMP581 pressure sensor after IMU to avoid Wire re-init conflicts. Don't know why this happens sometimes but seems to have fixed it. 
   if (pressureSensor.beginI2C(i2cAddress) != BMP5_OK)
   {
     Serial.println("BMP581 sensor error.");
@@ -229,6 +244,32 @@ void loop()
   if (pressureSensor.getSensorData(&data) == BMP5_OK)
   {
 
+    unsigned long nowMs = millis();
+    if (hasPrevPressure && nowMs > prevPressureMs)
+    {
+      float dt = (nowMs - prevPressureMs) / 1000.0f;
+      currentDp = (data.pressure - prevPressure) / dt;
+    }
+    else
+    {
+      currentDp = 0.0f;
+    }
+
+    prevPressure = data.pressure;
+    prevPressureMs = nowMs;
+    hasPrevPressure = true;
+
+    currentAccelDev = 0.0f;
+    if (imu.status == ICM_20948_Stat_Ok && imu.dataReady())
+    {
+      imu.getAGMT();
+      float ax = imu.accX();
+      float ay = imu.accY();
+      float az = imu.accZ();
+      float accelMag = sqrt(ax * ax + ay * ay + az * az);
+      currentAccelDev = fabs(accelMag - 1000.0f);
+    }
+
     historyBuffer[bufferIndex] = data.pressure;
     bufferIndex = (bufferIndex + 1) % WINDOW_SIZE;
     if (bufferIndex == 0)
@@ -249,7 +290,11 @@ void loop()
 
       currentStdev = sqrt(var / WINDOW_SIZE);
 
-      if (currentStdev > JITTER_THRESHOLD)
+      bool movingByStd = currentStdev > JITTER_THRESHOLD;
+      bool movingByDpAndAcc = (fabs(currentDp) > DERIVATIVE_THRESHOLD) &&
+                              (currentAccelDev > ACCEL_DEVIATION_THRESHOLD);
+
+      if (movingByStd || movingByDpAndAcc)
         handleMovingState();
       else
         handleStillState();
