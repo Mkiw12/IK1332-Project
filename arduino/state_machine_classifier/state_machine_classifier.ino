@@ -452,6 +452,9 @@ void callback(char *topic, byte *payload, unsigned int length)
   if (mapLoaded)
     return;
 
+  if (forceLocalCalibrate)
+    return;  // Skip loading retained map on boot if forcing local calibration
+
   Serial.println("Restoring retained map from broker...");
 
   StaticJsonDocument<512> doc;
