@@ -10,7 +10,7 @@
 // ============================
 // -------- SETTINGS ----------
 // ============================
-
+const bool forceLocalCalibrate = true;
 const bool DEBUG = false;
 // WiFi
 const char *ssid = "Edvins Mobil";
@@ -73,13 +73,6 @@ bool bufferFull = false;
 float referencePressure = 0;
 bool mapLoaded = false;
 
-// Floor map
-float FLOOR_OFFSETS[] = {0, -39.6733, -75.8909, -113.5566, -151.4735, -185.2196};
-//float FLOOR_OFFSETS[] = {0,  -10.4018,  -46.6155,  -78.6359,  -96.3046, -144.7175}; // edvin elevator skipping floor 5 to have -1
-const int NUM_FLOORS = sizeof(FLOOR_OFFSETS) / sizeof(FLOOR_OFFSETS[0]);
-const float FLOOR_THRESHOLD = 10.0;
-//const float JITTER_THRESHOLD = 2.0182; //based on the matlab file (simple_trainer_1_elevator.m)
-const float JITTER_THRESHOLD = 3.6666f; //edvin elevator .m file after advanced trainer
 
 // Telemetry state
 unsigned long lastMsgTime = 0;
@@ -96,15 +89,24 @@ float currentAccelDev = 0.0f;
 float prevPressure = 0.0f;
 unsigned long prevPressureMs = 0;
 bool hasPrevPressure = false;
-
-//Acceleration data. 
+//==================================================
+//---------------- ELEVATOR DATA --------------------
+//=================================================
 //Edvin
-const float DERIVATIVE_THRESHOLD = 11.3360f; //pa/s 
-const float ACCEL_DEVIATION_THRESHOLD = 14.55f; //mg
+const float DERIVATIVE_THRESHOLD = 10.4170f; //pa/s 
+const float ACCEL_DEVIATION_THRESHOLD = 17.89f; //mg
+float FLOOR_OFFSETS[] = {0,  -12.1573,  -47.2977,  -79.0011, -149.8092}; // edvin elevator skipping floor 4 to have -1
+const float JITTER_THRESHOLD = 0.8645f; //edvin elevator .m file after advanced trainer
 /*
 Real Elevator
 <missing>
+//const float JITTER_THRESHOLD = 2.0182; //based on the matlab file (simple_trainer_1_elevator.m)
+//float FLOOR_OFFSETS[] = {0, -39.6733, -75.8909, -113.5566, -151.4735, -185.2196};
 */
+
+// Floor map
+const int NUM_FLOORS = sizeof(FLOOR_OFFSETS) / sizeof(FLOOR_OFFSETS[0]);
+const float FLOOR_THRESHOLD = 10.0;
 
 // Networking
 WiFiClientSecure espClient;
@@ -176,6 +178,7 @@ void setup()
     imu.lowPower(false);
     imu.setSampleMode((ICM_20948_Internal_Acc | ICM_20948_Internal_Gyr), ICM_20948_Sample_Mode_Continuous);
 
+  //stolen from exmaples
     ICM_20948_fss_t myFSS;
     myFSS.a = gpm2;   // ±2g
     myFSS.g = dps250; // ±250 dps
@@ -198,11 +201,13 @@ void setup()
   }
 
   // Wait for retained map
+  if(!forceLocalCalibrate){
   unsigned long startWait = millis();
   while (!mapLoaded && millis() - startWait < 3000)
   {
     client.loop();
   }
+}
 
   // If no retained map, calibrate
   if (!mapLoaded)
@@ -220,6 +225,7 @@ void setup()
     }
 
     referencePressure = sum / 100.0;
+    mapLoaded = true;  // Prevent retained map from overwriting fresh calibration
     publishMap();
   }
   else
@@ -325,7 +331,7 @@ void loop()
 // -------- STATES ------------
 // ============================
 
-// movign state if elevator in transit. does not print
+// movign state if elevator in transit. 
 void handleMovingState()
 {
   counter = 0;
@@ -546,10 +552,13 @@ void checkMovementIMU()
 
   imu.getAGMT();
 
-  Serial.println("\n=== ICM_20948 ===");
-  Serial.print("Accel (mg)  X: "); Serial.print(imu.accX()); Serial.print("  Y: "); Serial.print(imu.accY()); Serial.print("  Z: "); Serial.println(imu.accZ());
-  Serial.print("Gyro (dps)  X: "); Serial.print(imu.gyrX()); Serial.print("  Y: "); Serial.print(imu.gyrY()); Serial.print("  Z: "); Serial.println(imu.gyrZ());
-  Serial.println("================\n");
+
+  if(DEBUG){
+    Serial.println("\n=== ICM_20948 ===");
+    Serial.print("Accel (mg)  X: "); Serial.print(imu.accX()); Serial.print("  Y: "); Serial.print(imu.accY()); Serial.print("  Z: "); Serial.println(imu.accZ());
+    Serial.print("Gyro (dps)  X: "); Serial.print(imu.gyrX()); Serial.print("  Y: "); Serial.print(imu.gyrY()); Serial.print("  Z: "); Serial.println(imu.gyrZ());
+    Serial.println("================\n");
+  }
 }
 
 // ============================

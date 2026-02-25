@@ -1,5 +1,8 @@
-data = readtable('with_imu_hemhiss.csv', 'VariableNamingRule', 'preserve');
+data = readtable('imutest2.csv', 'VariableNamingRule', 'preserve');
 P = data.Pressure_Pa;
+
+% Number of floors in your elevator
+x_floors = 5;
 
 % to explain to myself. We still look at variance to find still windows,
 % but now we also use derivative + imu to verify movement.
