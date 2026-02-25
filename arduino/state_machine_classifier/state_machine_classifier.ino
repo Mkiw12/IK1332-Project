@@ -10,7 +10,6 @@
 // ============================
 // -------- SETTINGS ----------
 // ============================
-const bool forceLocalCalibrate = true;
 const bool DEBUG = false;
 // WiFi
 const char *ssid = "Edvins Mobil";
@@ -72,6 +71,7 @@ bool bufferFull = false;
 
 float referencePressure = 0;
 bool mapLoaded = false;
+bool forceRecalibrate = false;  // Set to true if button A held at boot
 
 
 // Telemetry state
@@ -136,12 +136,36 @@ void setup()
   Serial.begin(115200);
   Wire.begin(4, 1);
 
+  // Check if button A is held at boot to force recalibration
+  pinMode(SWA_IO, INPUT);
+  forceRecalibrate = (digitalRead(SWA_IO) == HIGH);
+  if (forceRecalibrate)
+  {
+    Serial.println("Button A held — forcing recalibration and clearing retained map.");
+  }
+
   espClient.setCACert(ca_cert);
 
   connectWifi();
   client.setServer(mqtt_broker, mqtt_port);
   client.setCallback(callback);
   connectMQTT();
+
+  // Clear the retained map on the broker if recalibrating
+  if (forceRecalibrate)
+  {
+    client.publish(TOPIC_MAP, "", true);  // empty retained = clears it
+    Serial.println("Retained map cleared from broker.");
+    mapLoaded = false;  // force local calibration to run
+    
+    // Reset floor offsets to hardcoded defaults
+    FLOOR_OFFSETS[0] = 0;
+    FLOOR_OFFSETS[1] = -12.1573;
+    FLOOR_OFFSETS[2] = -47.2977;
+    FLOOR_OFFSETS[3] = -79.0011;
+    FLOOR_OFFSETS[4] = -149.8092;
+    Serial.println("Floor offsets reset to defaults.");
+  }
 
   pinMode(LED_SDA_IO, OUTPUT);
   pinMode(LED_SHCP_IO, OUTPUT);
@@ -201,13 +225,11 @@ void setup()
   }
 
   // Wait for retained map
-  if(!forceLocalCalibrate){
   unsigned long startWait = millis();
   while (!mapLoaded && millis() - startWait < 3000)
   {
     client.loop();
   }
-}
 
   // If no retained map, calibrate
   if (!mapLoaded)
@@ -239,6 +261,10 @@ void setup()
   {
     Serial.println("Using retained map.");
   }
+
+  // Subscribe to MAP topic after calibration/map loading is complete
+  Serial.println("Subscribing to MAP topic...");
+  client.subscribe(TOPIC_MAP);
 }
 
 // ============================
@@ -450,7 +476,7 @@ void publishMap()
   char buffer[512];
   serializeJson(doc, buffer);
 
-  client.publish(TOPIC_MAP, buffer, !forceLocalCalibrate); // only retain when not forcing local
+  client.publish(TOPIC_MAP, buffer, true); // retained
 }
 void callback(char *topic, byte *payload, unsigned int length)
 {
@@ -460,9 +486,6 @@ void callback(char *topic, byte *payload, unsigned int length)
 
   if (mapLoaded)
     return;
-
-  if (forceLocalCalibrate)
-    return;  // Skip loading retained map on boot if forcing local calibration
 
   Serial.println("Restoring retained map from broker...");
 
@@ -539,11 +562,6 @@ void connectMQTT()
                        mqtt_password))
     {
       Serial.println("MQTT connected!");
-      if (!forceLocalCalibrate)
-      {
-        Serial.println("Subscribing to MAP topic...");
-        client.subscribe(TOPIC_MAP);
-      }
     }
     else
     {
