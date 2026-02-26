@@ -8,15 +8,12 @@
  */
 
 const {setGlobalOptions} = require("firebase-functions");
-const {onRequest} = require("firebase-functions/https");
 const logger = require("firebase-functions/logger");
-const { onDocumentUpdated } = require("firebase-functions/v2/firestore");
-
+const {onDocumentUpdated} = require("firebase-functions/v2/firestore");
 
 const {initializeApp} = require("firebase-admin/app");
-const {getFirestore} = require("firebase-admin/firestore");
 const nodemailer = require("nodemailer");
-var config = require("./config");
+const config = require("./config");
 
 initializeApp();
 
@@ -30,7 +27,7 @@ initializeApp();
 // functions should each use functions.runWith({ maxInstances: 10 }) instead.
 // In the v1 API, each function can only serve one request per container, so
 // this will be the maximum concurrent request count.
-setGlobalOptions({ maxInstances: 1 });
+setGlobalOptions({maxInstances: 1});
 
 // Create and deploy your first functions
 // https://firebase.google.com/docs/functions/get-started
@@ -41,42 +38,47 @@ setGlobalOptions({ maxInstances: 1 });
 // });
 
 exports.onFloorStuck = onDocumentUpdated(
-  "sensor_readings/{docId}", // docId is the timestamp document name
-  async (event) => {
-    const before = event.data.before.data();
-    const after = event.data.after.data();
+    {
+      document: "alarm/{docId}",
+      maxInstances: 1, // extra safety
+    },
+    async (event) => {
+      const before = event.data.before.data();
+      const after = event.data.after.data();
 
-    if (!before || !after) return;
+      if (!before || !after) return;
 
-    const prevFloor = before.floor;
-    const newFloor = after.floor;
+      const prevFloor = before.floor;
+      const newFloor = after.floor;
 
-    // Only trigger when floor changes to -1
-    if (prevFloor !== -1 && newFloor === -1) {
-      logger.info("betweenFloors changed to true. Sending email...");
+      // Only trigger when floor changes to -1
+      if (prevFloor !== -1 && newFloor === -1) {
+        logger.info("betweenFloors changed to true. Sending email...");
 
-      // Send email here
-      const transporter = nodemailer.createTransport({
-        service: "gmail",
-        auth: {
-          user: config.fromMail,  
-          pass: config.password // use App Password if 2FA enabled
-        },
-      });
+        // Send email here
+        const transporter = nodemailer.createTransport({
+          service: "gmail",
+          auth: {
+            user: config.fromMail,
+            pass: config.password, // use App Password if 2FA enabled
+          },
+        });
 
-       const mailOptions = {
-        from: '"Elevator Alert" <' + config.fromMail + '>',
-        to: config.toMail,
-        subject: "Elevator Alert: Between Floors",
-        text: `The elevator is now between floors.`,
+        const mailOptions = {
+          from: "\"Elevator Alert\" <" + config.fromMail + ">",
+          to: config.toMail,
+          subject: "Elevator Alert: Between Floors",
+          text: `The elevator is now between floors.`,
+        };
+
+        try {
+          await transporter.sendMail(mailOptions);
+
+
+          console.log("Email sent successfully!");
+        } catch (err) {
+          console.error("Error sending email:", err);
+        }
       }
-
-      try {
-        await transporter.sendMail(mailOptions);
-        console.log("Email sent successfully!");
-      } catch (err) {
-        console.error("Error sending email:", err);
-      } 
-    }
-  }
+    },
 );
